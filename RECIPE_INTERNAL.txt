@@ -1,0 +1,579 @@
+MASTER BOT + POKÉTWO — INTERNAL RECIPE (DO NOT SURFACE IN BOT OUTPUT)
+
+=====================
+SECTION A: MASTER BOT RECIPE (LEGACY — KEEP INTACT)
+=====================
+
+"""
+===============================================================================
+BOT ARCHITECTURE RECIPE (READ THIS FIRST)
+===============================================================================
+
+If this file is pasted into a new AI conversation:
+- DO NOT propose changes immediately.
+- FIRST respond with the "RECIPE QUESTIONS" section below (as a checklist).
+- DO NOT ask for file paths; these questions are conceptual.
+
+CORE IDEA
+---------
+- This project is built like "Minecraft mods":
+  - A PACK (hub) = one slash-command system.
+  - FEATURES (subpacks) = drop-in folders discovered automatically by that pack.
+- bot.py must NOT hardcode feature IDs or feature imports.
+- bot.py may load packs/hubs (because each hub is a top-level slash command).
+
+FOLDER MODEL
+------------
+Root
+└─ plugins/
+   └─ <pack_name>/                      # a slash-command hub
+      ├─ <entry>.py                     # hub entrypoint (registers 1 slash command)
+      ├─ registry.py                    # hub registry (features register here)
+      ├─ feature_manager.py             # hub auto-discovery loader
+      └─ features/
+         └─ <feature_id>/               # drop-in subpack
+            ├─ pack.py                  # registers feature into hub registry
+            └─ _data/                   # storage lives INSIDE feature folder
+
+NON-NEGOTIABLE DEFAULTS (DO NOT ASK)
+------------------------------------
+- 100% Components v2 (no embeds).
+- Standard layout is enforced unless explicitly overridden.
+- Root menu has NO Back button; Refresh (GREEN) only.
+- Subpages have Back (RED) only.
+- Feature page Toggle doubles as status:
+    ON  => GREEN  "Toggle [ON]"
+    OFF => RED    "Toggle [OFF]"
+- One-menu-message rule: menu updates re-render in place (single ephemeral message).
+- Storage is always pack-relative (inside pack/feature folder).
+- Diagnostics are always on (logs + optional channel post).
+- Permissions/intents are fixed by project policy (not a question).
+- Feature handlers MUST NOT send/edit messages; hub owns rendering.
+
+UI LAYOUT CONTRACT (STANDARD)
+-----------------------------
+/settings root:
+TITLE
+DESCRIPTION
+[Refresh - GREEN]
+---- SEPARATOR ----
+Title: [Category]
+Description: [About category]      [Open]
+---- SEPARATOR ----
+
+Category page:
+TITLE
+DESCRIPTION
+[Back - RED]
+---- SEPARATOR ----
+Title: [Feature]
+Description: [About feature]       [Open]
+---- SEPARATOR ----
+
+Feature page:
+TITLE
+DESCRIPTION
+[Back - RED]
+---- SEPARATOR ----
+[Toggle [ON]] (GREEN)  OR  [Toggle [OFF]] (RED)
+
+CATEGORY METADATA
+-----------------
+- Categories are defined by features (subpacks), not the hub.
+- Each feature must provide:
+    category
+    category_description
+- If multiple features provide different category_description for the same category:
+  first one wins; conflicts log a warning (does not break).
+
+RECIPE QUESTIONS (ASK THESE FIRST IN A NEW AI CONVERSATION)
+-----------------------------------------------------------
+1) What kind of pack is this?
+   - Game pack / System pack / Other (explain)
+2) Is this a MAIN PACK (top-level slash command) or a SUBPACK (feature in a main pack)?
+3) If SUBPACK: which main pack does it belong to?
+4) What category name + category description should it appear under?
+5) What is the minimum feature set for V1 (exact actions/settings)?
+6) Should the UI be ephemeral? (default yes unless instructed otherwise)
+7) What diagnostics must be shown at startup (logs + optional channel post)?
+8) Should the pack post a restart/status message to a channel? (channel ID)
+
+===============================================================================
+
+## POKÉTWO INTEGRATION (OPT A) — NON-NEGOTIABLE
+- Pokétwo is implemented as a **feature/subpack (Opt A)** inside an existing hub pack (e.g. `settings`), not as a new hub pack.
+- **Do not modify `bot.py`** to “make Pokétwo work.” No extra `load_extension()` calls, no hardcoded imports, no special-case glue.
+- Deliver Pokétwo as a **feature folder only** under an existing hub pack:
+  - `plugins/<existing_hub>/features/poketwo/__init__.py`
+  - `plugins/<existing_hub>/features/poketwo/pack.py`
+  - `plugins/<existing_hub>/features/poketwo/_data/.keep`
+- The only valid integration method is: **register into the existing hub registry / feature manager** (same pattern as `voice_announcements`).
+- Package structure rules still apply:
+  - `plugins/__init__.py` must exist
+  - each pack folder must have `__init__.py`
+  - missing `__init__.py` is treated as “skip pack” behavior (expected)
+
+## DELIVERY / VERSIONING FOR OPT A FEATURES
+- Feature-only updates must be delivered as a **feature zip** named:
+  - `Poketwo.1.zip`, `Poketwo.2.zip`, etc. (only number changes)
+- Feature-only updates must **never** require deleting root files.
+- Full builds are only for core/hub/bot.py issues and remain `Edit.C.X.zip` (internal display `C.X`).
+"""
+
+=====================
+SECTION B: POKÉTWO RECIPE (CURRENT AGREED STATE)
+=====================
+
+ENV (LOCKED — DO NOT ALTER KEY NAMES)
+-----------------------------------
+# Discord
+BOT_TOKEN=...
+
+# Poketwo (MongoDB)
+POKETWO_DATABASE_URI=...
+POKETWO_DATABASE_NAME=poketwo
+
+# Poketwo (Redis)
+REDIS_URL=...
+
+RULE: Do not rename env keys (example: do NOT change REDIS_URL to POKETWO_REDIS_URL).
+Only change env values when there is a specific, justified reason.
+
+ARCHITECTURE / OWNERSHIP
+------------------------
+- Master Bot is the primary bot.
+- Master Bot features are slash-command based (slash-only for Master Bot features).
+- Pokétwo is integrated as a main-pack feature set (not a separate invited bot).
+- Pokétwo owns its gameplay surface.
+- Master Bot must ignore/avoid double-processing Pokétwo gameplay messages.
+- Prefix routing must allow Pokétwo gameplay via: !p <command> (global).
+- Slash routing: /pokemon is the Pokétwo Hub UI (Component v2).
+- Additional Pokétwo slash commands are desired for server integration and reduced mistyping:
+  /shop, /trade, etc. (implemented as needed; do not remove /pokemon hub).
+
+MONGODB + REDIS
+---------------
+- Mongo + Redis must be fully live.
+- The integration is allowed to require both MongoDB and Redis.
+
+POKÉTWO HUB UI (COMPONENT V2)
+----------------------------
+Format:
+TITLE
+Description
+---separator---
+Button description [Button]
+---separator---
+Button description [Button]
+---separator---
+Button description [Button]
+
+Hub organization (non-redundant; remove repeated "use help / use commands" blocks):
+- Pokétwo Hub
+  "Onboard and run common actions. Full gameplay uses !p …"
+
+---separator---
+Create your profile and choose a starter. [Start]
+
+---separator---
+Show the full command list and examples. [Commands]
+
+---separator---
+Explain gameplay loop + next steps (what to do after starter). [Help]
+
+---separator---
+Find a command by keyword (e.g., ‘trade’, ‘market’, ‘incense’).
+[Search] -> implemented as a dropdown with short descriptions.
+
+---separator---
+Admin settings: spawns, channels, rates, economy toggles.
+[Admin Settings] -> Admin-only (Discord Administrator permission only).
+
+START BUTTON BEHAVIOR
+---------------------
+- [Start] switches to "Summary" behavior.
+- If no profile exists:
+  - Open starter selection UI.
+  - Full generation scope: Gen 1–9.
+- If profile exists:
+  - Show profile summary + next-step guidance.
+
+STARTER SELECTION LOCK RULE
+---------------------------
+- After picking a starter, the user can change within:
+  - same-day change window, OR
+  - until the starter levels up.
+- "Same day" boundary is configurable UTC.
+- During the change window, the UI must warn the user that the choice will lock.
+
+LOCKED CASE UI
+--------------
+Case: Starter locked -> Start becomes Summary only.
+Show:
+- Title: Starter Locked
+- Description:
+  - Current starter
+  - Level
+  - Lock reason:
+    - “Starter has leveled up” OR
+    - “Change window expired (UTC)”
+Buttons:
+- [Continue]
+
+IMAGES / ASSETS
+---------------
+- Pokémon images are expected, but the Pokétwo data/ assets pack is intentionally not uploaded yet.
+- After wiring and stabilizing gameplay/features, upload/enable the data/ pack.
+
+NON-GOALS
+---------
+- The recipe must not be visible to end users.
+- The recipe must not be summarized in bot output.
+
+"""
+===============================================================================
+BOT ARCHITECTURE RECIPE (READ THIS FIRST)
+===============================================================================
+
+If this file is pasted into a new AI conversation:
+- DO NOT propose changes immediately.
+- FIRST respond with the "RECIPE QUESTIONS" section below (as a checklist).
+- DO NOT ask for file paths; these questions are conceptual.
+
+CORE IDEA
+---------
+- This project is built like "Minecraft mods":
+  - A PACK (hub) = one slash-command system.
+  - FEATURES (subpacks) = drop-in folders discovered automatically by that pack.
+- bot.py must NOT hardcode feature IDs or feature imports.
+- bot.py may load packs/hubs (because each hub is a top-level slash command).
+
+FOLDER MODEL
+------------
+Root
+└─ plugins/
+   └─ <pack_name>/                      # a slash-command hub
+      ├─ <entry>.py                     # hub entrypoint (registers 1 slash command)
+      ├─ registry.py                    # hub registry (features register here)
+      ├─ feature_manager.py             # hub auto-discovery loader
+      └─ features/
+         └─ <feature_id>/               # drop-in subpack
+            ├─ pack.py                  # registers feature into hub registry
+            └─ _data/                   # storage lives INSIDE feature folder
+
+NON-NEGOTIABLE DEFAULTS (DO NOT ASK)
+------------------------------------
+- 100% Components v2 (no embeds).
+- Standard layout is enforced unless explicitly overridden.
+- Root menu has NO Back button; Refresh (GREEN) only.
+- Subpages have Back (RED) only.
+- Feature page Toggle doubles as status:
+    ON  => GREEN  "Toggle [ON]"
+    OFF => RED    "Toggle [OFF]"
+- One-menu-message rule: menu updates re-render in place (single ephemeral message).
+- Storage is always pack-relative (inside pack/feature folder).
+- Diagnostics are always on (logs + optional channel post).
+- Permissions/intents are fixed by project policy (not a question).
+- Feature handlers MUST NOT send/edit messages; hub owns rendering.
+
+UI LAYOUT CONTRACT (STANDARD)
+-----------------------------
+/settings root:
+TITLE
+DESCRIPTION
+[Refresh - GREEN]
+---- SEPARATOR ----
+Title: [Category]
+Description: [About category]      [Open]
+---- SEPARATOR ----
+
+Category page:
+TITLE
+DESCRIPTION
+[Back - RED]
+---- SEPARATOR ----
+Title: [Feature]
+Description: [About feature]       [Open]
+---- SEPARATOR ----
+
+Feature page:
+TITLE
+DESCRIPTION
+[Back - RED]
+---- SEPARATOR ----
+[Toggle [ON]] (GREEN)  OR  [Toggle [OFF]] (RED)
+
+CATEGORY METADATA
+-----------------
+- Categories are defined by features (subpacks), not the hub.
+- Each feature must provide:
+    category
+    category_description
+- If multiple features provide different category_description for the same category:
+  first one wins; conflicts log a warning (does not break).
+
+RECIPE QUESTIONS (ASK THESE FIRST IN A NEW AI CONVERSATION)
+-----------------------------------------------------------
+1) What kind of pack is this?
+   - Game pack / System pack / Other (explain)
+2) Is this a MAIN PACK (top-level slash command) or a SUBPACK (feature in a main pack)?
+3) If SUBPACK: which main pack does it belong to?
+4) What category name + category description should it appear under?
+5) What is the minimum feature set for V1 (exact actions/settings)?
+6) Should the UI be ephemeral? (default yes unless instructed otherwise)
+7) What diagnostics must be shown at startup (logs + optional channel post)?
+8) Should the pack post a restart/status message to a channel? (channel ID)
+
+===============================================================================
+
+## POKÉTWO INTEGRATION (OPT A) — NON-NEGOTIABLE
+- Pokétwo is implemented as a **feature/subpack (Opt A)** inside an existing hub pack (e.g. `settings`), not as a new hub pack.
+- **Do not modify `bot.py`** to “make Pokétwo work.” No extra `load_extension()` calls, no hardcoded imports, no special-case glue.
+- Deliver Pokétwo as a **feature folder only** under an existing hub pack:
+  - `plugins/<existing_hub>/features/poketwo/__init__.py`
+  - `plugins/<existing_hub>/features/poketwo/pack.py`
+  - `plugins/<existing_hub>/features/poketwo/_data/.keep`
+- The only valid integration method is: **register into the existing hub registry / feature manager** (same pattern as `voice_announcements`).
+- Package structure rules still apply:
+  - `plugins/__init__.py` must exist
+  - each pack folder must have `__init__.py`
+  - missing `__init__.py` is treated as “skip pack” behavior (expected)
+
+## DELIVERY / VERSIONING FOR OPT A FEATURES
+- Feature-only updates must be delivered as a **feature zip** named:
+  - `Poketwo.1.zip`, `Poketwo.2.zip`, etc. (only number changes)
+- Feature-only updates must **never** require deleting root files.
+- Full builds are only for core/hub/bot.py issues and remain `Edit.C.X.zip` (internal display `C.X`).
+"""
+
+MASTER BOT + POKÉTWO — INTERNAL RECIPE (DO NOT SURFACE IN BOT OUTPUT)
+
+=====================
+SECTION A: MASTER BOT RECIPE (LEGACY — KEEP INTACT)
+=====================
+
+"""
+===============================================================================
+BOT ARCHITECTURE RECIPE (READ THIS FIRST)
+===============================================================================
+
+If this file is pasted into a new AI conversation:
+- DO NOT propose changes immediately.
+- FIRST respond with the "RECIPE QUESTIONS" section below (as a checklist).
+- DO NOT ask for file paths; these questions are conceptual.
+
+CORE IDEA
+---------
+- This project is built like "Minecraft mods":
+  - A PACK (hub) = one slash-command system.
+  - FEATURES (subpacks) = drop-in folders discovered automatically by that pack.
+- bot.py must NOT hardcode feature IDs or feature imports.
+- bot.py may load packs/hubs (because each hub is a top-level slash command).
+
+FOLDER MODEL
+------------
+Root
+└─ plugins/
+   └─ <pack_name>/                      # a slash-command hub
+      ├─ <entry>.py                     # hub entrypoint (registers 1 slash command)
+      ├─ registry.py                    # hub registry (features register here)
+      ├─ feature_manager.py             # hub auto-discovery loader
+      └─ features/
+         └─ <feature_id>/               # drop-in subpack
+            ├─ pack.py                  # registers feature into hub registry
+            └─ _data/                   # storage lives INSIDE feature folder
+
+NON-NEGOTIABLE DEFAULTS (DO NOT ASK)
+------------------------------------
+- 100% Components v2 (no embeds).
+- Standard layout is enforced unless explicitly overridden.
+- Root menu has NO Back button; Refresh (GREEN) only.
+- Subpages have Back (RED) only.
+- Feature page Toggle doubles as status:
+    ON  => GREEN  "Toggle [ON]"
+    OFF => RED    "Toggle [OFF]"
+- One-menu-message rule: menu updates re-render in place (single ephemeral message).
+- Storage is always pack-relative (inside pack/feature folder).
+- Diagnostics are always on (logs + optional channel post).
+- Permissions/intents are fixed by project policy (not a question).
+- Feature handlers MUST NOT send/edit messages; hub owns rendering.
+
+UI LAYOUT CONTRACT (STANDARD)
+-----------------------------
+/settings root:
+TITLE
+DESCRIPTION
+[Refresh - GREEN]
+---- SEPARATOR ----
+Title: [Category]
+Description: [About category]      [Open]
+---- SEPARATOR ----
+
+Category page:
+TITLE
+DESCRIPTION
+[Back - RED]
+---- SEPARATOR ----
+Title: [Feature]
+Description: [About feature]       [Open]
+---- SEPARATOR ----
+
+Feature page:
+TITLE
+DESCRIPTION
+[Back - RED]
+---- SEPARATOR ----
+[Toggle [ON]] (GREEN)  OR  [Toggle [OFF]] (RED)
+
+CATEGORY METADATA
+-----------------
+- Categories are defined by features (subpacks), not the hub.
+- Each feature must provide:
+    category
+    category_description
+- If multiple features provide different category_description for the same category:
+  first one wins; conflicts log a warning (does not break).
+
+RECIPE QUESTIONS (ASK THESE FIRST IN A NEW AI CONVERSATION)
+-----------------------------------------------------------
+1) What kind of pack is this?
+   - Game pack / System pack / Other (explain)
+2) Is this a MAIN PACK (top-level slash command) or a SUBPACK (feature in a main pack)?
+3) If SUBPACK: which main pack does it belong to?
+4) What category name + category description should it appear under?
+5) What is the minimum feature set for V1 (exact actions/settings)?
+6) Should the UI be ephemeral? (default yes unless instructed otherwise)
+7) What diagnostics must be shown at startup (logs + optional channel post)?
+8) Should the pack post a restart/status message to a channel? (channel ID)
+
+===============================================================================
+
+## POKÉTWO INTEGRATION (OPT A) — NON-NEGOTIABLE
+- Pokétwo is implemented as a **feature/subpack (Opt A)** inside an existing hub pack (e.g. `settings`), not as a new hub pack.
+- **Do not modify `bot.py`** to “make Pokétwo work.” No extra `load_extension()` calls, no hardcoded imports, no special-case glue.
+- Deliver Pokétwo as a **feature folder only** under an existing hub pack:
+  - `plugins/<existing_hub>/features/poketwo/__init__.py`
+  - `plugins/<existing_hub>/features/poketwo/pack.py`
+  - `plugins/<existing_hub>/features/poketwo/_data/.keep`
+- The only valid integration method is: **register into the existing hub registry / feature manager** (same pattern as `voice_announcements`).
+- Package structure rules still apply:
+  - `plugins/__init__.py` must exist
+  - each pack folder must have `__init__.py`
+  - missing `__init__.py` is treated as “skip pack” behavior (expected)
+
+## DELIVERY / VERSIONING FOR OPT A FEATURES
+- Feature-only updates must be delivered as a **feature zip** named:
+  - `Poketwo.1.zip`, `Poketwo.2.zip`, etc. (only number changes)
+- Feature-only updates must **never** require deleting root files.
+- Full builds are only for core/hub/bot.py issues and remain `Edit.C.X.zip` (internal display `C.X`).
+"""
+
+=====================
+SECTION B: POKÉTWO RECIPE (CURRENT AGREED STATE)
+=====================
+
+ENV (LOCKED — DO NOT ALTER KEY NAMES)
+-----------------------------------
+# Discord
+BOT_TOKEN=...
+
+# Poketwo (MongoDB)
+POKETWO_DATABASE_URI=...
+POKETWO_DATABASE_NAME=poketwo
+
+# Poketwo (Redis)
+REDIS_URL=...
+
+RULE: Do not rename env keys (example: do NOT change REDIS_URL to POKETWO_REDIS_URL).
+Only change env values when there is a specific, justified reason.
+
+ARCHITECTURE / OWNERSHIP
+------------------------
+- Master Bot is the primary bot.
+- Master Bot features are slash-command based (slash-only for Master Bot features).
+- Pokétwo is integrated as a main-pack feature set (not a separate invited bot).
+- Pokétwo owns its gameplay surface.
+- Master Bot must ignore/avoid double-processing Pokétwo gameplay messages.
+- Prefix routing must allow Pokétwo gameplay via: !p <command> (global).
+- Slash routing: /pokemon is the Pokétwo Hub UI (Component v2).
+- Additional Pokétwo slash commands are desired for server integration and reduced mistyping:
+  /shop, /trade, etc. (implemented as needed; do not remove /pokemon hub).
+
+MONGODB + REDIS
+---------------
+- Mongo + Redis must be fully live.
+- The integration is allowed to require both MongoDB and Redis.
+
+POKÉTWO HUB UI (COMPONENT V2)
+----------------------------
+Format:
+TITLE
+Description
+---separator---
+Button description [Button]
+---separator---
+Button description [Button]
+---separator---
+Button description [Button]
+
+Hub organization (non-redundant; remove repeated "use help / use commands" blocks):
+- Pokétwo Hub
+  "Onboard and run common actions. Full gameplay uses !p …"
+
+---separator---
+Create your profile and choose a starter. [Start]
+
+---separator---
+Show the full command list and examples. [Commands]
+
+---separator---
+Explain gameplay loop + next steps (what to do after starter). [Help]
+
+---separator---
+Find a command by keyword (e.g., ‘trade’, ‘market’, ‘incense’).
+[Search] -> implemented as a dropdown with short descriptions.
+
+---separator---
+Admin settings: spawns, channels, rates, economy toggles.
+[Admin Settings] -> Admin-only (Discord Administrator permission only).
+
+START BUTTON BEHAVIOR
+---------------------
+- [Start] switches to "Summary" behavior.
+- If no profile exists:
+  - Open starter selection UI.
+  - Full generation scope: Gen 1–9.
+- If profile exists:
+  - Show profile summary + next-step guidance.
+
+STARTER SELECTION LOCK RULE
+---------------------------
+- After picking a starter, the user can change within:
+  - same-day change window, OR
+  - until the starter levels up.
+- "Same day" boundary is configurable UTC.
+- During the change window, the UI must warn the user that the choice will lock.
+
+LOCKED CASE UI
+--------------
+Case: Starter locked -> Start becomes Summary only.
+Show:
+- Title: Starter Locked
+- Description:
+  - Current starter
+  - Level
+  - Lock reason:
+    - “Starter has leveled up” OR
+    - “Change window expired (UTC)”
+Buttons:
+- [Continue]
+
+IMAGES / ASSETS
+---------------
+- Pokémon images are expected, but the Pokétwo data/ assets pack is intentionally not uploaded yet.
+- After wiring and stabilizing gameplay/features, upload/enable the data/ pack.
+
+NON-GOALS
+---------
+- The recipe must not be visible to end users.
+- The recipe must not be summarized in bot output.
